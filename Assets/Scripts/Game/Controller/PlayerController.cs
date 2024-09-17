@@ -1,55 +1,120 @@
 using System;
-using Game.Controller.Core;
+using Game.Input.Core;
+using Game.Setting;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace Game.Controller
 {
-    public class PlayerController : MonoBehaviour, IInput
+    public class PlayerController : MonoBehaviour, IMovementInput, IRotationInput
     {
         #region Serialized Fields
 
-        [SerializeField] Transform _cam;
+        [SerializeField] private CameraSettings _camSettings;
 
         #endregion
 
-        private Action<Vector3, float> OnMovement;
+        private Action<Vector3, float> OnMovementInput;
+        private Action<Vector3, float> OnRotationInput;
 
         void Start() 
         {
-            if(!_cam) 
-            {
-                string msg = "Camera not set for player controller";
-                Debug.LogWarning(msg);
-
-                _cam = Camera.main.transform;
-            } 
+            Cursor.lockState = CursorLockMode.Locked;
         }
+
+        void Update() 
+        {
+            SmoothRotation();
+            SmoothMovement();
+        }
+
+        #region Movement
+
+        [Header("Desired Movement")]
+        private Vector2 _movementDesiredDir = Vector2.zero;
+        private float _movementDesiredMagnitude = 0.0f;
 
         public void MovementInput(InputAction.CallbackContext context) 
         {
             Vector2 input = context.ReadValue<Vector2>();
 
-            Vector3 fix = _cam.right * input.x + _cam.forward * input.y;
-            Vector3 dir = new Vector3(fix.x, 0.0f, fix.z).normalized;
-
-            #if UNITY_EDITOR
-            _direction = dir;
-            #endif
-
-            OnMovement?.Invoke(dir, input.magnitude);
+            _movementDesiredDir = input;
+            _movementDesiredMagnitude = input.magnitude;
         }
 
-        #region IListener<Action<Vector3, float>> Implementation
+        private const float SMOOTH_MOVEMENT_FACTOR = 10.0f;
+
+        [Header("Smooth Movement")]
+        private Vector3 _smoothMovementDir = Vector3.zero;
+        private float _smoothMovementMagnitude = 0.0f;
+
+        void SmoothMovement() 
+        {
+            Vector3 fix = transform.right * _movementDesiredDir.x + transform.forward * _movementDesiredDir.y;
+            fix = new Vector3(fix.x, 0.0f, fix.z).normalized;
+
+            // Movement smoothing
+            _smoothMovementDir = Vector3.Lerp(_smoothMovementDir, fix, Time.deltaTime * SMOOTH_MOVEMENT_FACTOR);
+            _smoothMovementMagnitude = Mathf.Lerp(_smoothMovementMagnitude, _movementDesiredMagnitude, Time.deltaTime * SMOOTH_MOVEMENT_FACTOR);
+
+            OnMovementInput?.Invoke(_smoothMovementDir, _smoothMovementMagnitude);
+        }
+
+        #endregion
+
+        #region Camera
+
+        [Header("Desired Rotation")]
+        private Vector2 _cameraDesiredDir = Vector2.zero;
+        private float _cameraDesiredMagnitude = 0.0f;
+
+        public void CameraInput(InputAction.CallbackContext context) 
+        {
+            Vector2 input = context.ReadValue<Vector2>();
+
+            _cameraDesiredDir = input.normalized;
+            _cameraDesiredMagnitude = input.magnitude;
+        }
+
+        [Header("Smooth Rotation")]
+        private Vector3 _smoothCameraDir = Vector3.zero;
+        private float _smoothCameraMagnitude = 0.0f;
+
+        void SmoothRotation() 
+        {
+            // Camera rotation smoothing
+            _smoothCameraDir = Vector3.Lerp(_smoothCameraDir, _cameraDesiredDir, Time.deltaTime * _camSettings.HorizontalSensitivity);
+            _smoothCameraMagnitude = Mathf.Lerp(_smoothCameraMagnitude, _cameraDesiredMagnitude, Time.deltaTime * _camSettings.HorizontalSensitivity);
+
+            OnRotationInput?.Invoke(_smoothCameraDir, _smoothCameraMagnitude);            
+        }
+
+        #endregion
+
+        #region IRotationInput<Action<Vector3, float>> Implementation
+
+        public void AddRotationListener(Action<Vector3, float> eventHandler)
+        {
+            OnRotationInput += eventHandler;
+        }
+
+        public void RemoveRotationListener(Action<Vector3, float> eventHandler)
+        {
+            OnRotationInput -= eventHandler;
+        }
+
+        #endregion 
+
+        #region IMovementInput<Action<Vector3, float>> Implementation
 
         public void AddMovementListener(Action<Vector3, float> eventHandler)
         {
-            OnMovement += eventHandler;
+            OnMovementInput += eventHandler;
         }
 
         public void RemoveMovementListener(Action<Vector3, float> eventHandler)
         {
-            OnMovement -= eventHandler;
+            OnMovementInput -= eventHandler;
         }
 
         #endregion
@@ -57,11 +122,13 @@ namespace Game.Controller
         #region Debug
 
         #if UNITY_EDITOR
-        private Vector3 _direction;
         void OnDrawGizmos() 
         {
             Gizmos.color = Color.green;
-            Gizmos.DrawRay(transform.position, _direction);
+            Gizmos.DrawRay(transform.position, _smoothMovementDir);
+
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawRay(transform.position, transform.forward);
         }
         #endif
 

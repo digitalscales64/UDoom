@@ -1,22 +1,22 @@
 using System;
 using Game.Attribute;
-using Game.Controller.Core;
+using Game.Input.Core;
 using UnityEngine;
 
 namespace Game.Controller 
 {
-    [RequireComponent(typeof(CapsuleCollider), typeof(IInput))]
+    [RequireComponent(typeof(CapsuleCollider), typeof(IMovementInput))]
     public class MovementController : MonoBehaviour, Core.IMovement
     {
         private const int MAX_NEIGHBOURS = 16;
         private const float GRAVITY = 9.8f;
-        private const float MIN_DOT_SURFACE = 0.3f;
         private const float EPSILON = 0.3f;
 
         #region Serialized Fields
 
-        [SerializeField] private Movement _attributes;
+        [SerializeField] private MovementAttributes _attributes;
         [SerializeField] private CapsuleCollider _collider;
+        [SerializeField] private float _groundSphereRadius = 0.2f;
         [SerializeField] private bool _useGravity;
 
         #endregion
@@ -25,20 +25,28 @@ namespace Game.Controller
         private Action<bool> _onFalling;
 
         // Desired Movement
-        private Vector3 _inputDirection;
-        private float _inputMagnitude;
+        private Vector3 _moveDirection;
+        private float _moveMagnitude;
+
+        // Desired Rotation
+        private Vector3 _turnDirection;
+        private float _turnMagnitude;
 
         // Collisions
         private Collider[] _neighbours;
 
         // Falling
-        private bool _falling;
+        private bool _onGround;
         private float _gravity;
+        private float _grounding;
 
         void Start() 
         {
-            IInput input = GetComponent<IInput>();
-            input.AddMovementListener(SetMovement);
+            IMovementInput movementInput = GetComponent<IMovementInput>();
+            movementInput.AddMovementListener(SetMovement);
+
+            IRotationInput rotationInput = GetComponent<IRotationInput>();
+            rotationInput.AddRotationListener(SetRotation); 
 
             if(!_collider) 
             {
@@ -52,23 +60,52 @@ namespace Game.Controller
 
         void FixedUpdate() 
         {
+            Rotation();
+            Movement();
+        }
+
+        void Movement() 
+        {
+            // Desired Movement
+            float impulse = _moveMagnitude * _attributes.MovementSpeed * Time.fixedDeltaTime;
+            Vector3 advance = _moveDirection * impulse + Vector3.down * _gravity;
+
+            // Check gravity
+            if(_useGravity) 
+            {
+                // Check grounding
+                RaycastHit hit;
+                Ray ray = new Ray(transform.position + advance, Vector3.down); 
+                _onGround = Physics.SphereCast(ray, _groundSphereRadius, out hit, _collider.height/2.0f + EPSILON);
+
+                if(!_onGround) 
+                {
+                    _grounding = 0.0f;
+                    _gravity += GRAVITY * Time.fixedDeltaTime * Time.fixedDeltaTime;
+                } else 
+                {
+                    _grounding = Mathf.Abs(transform.position.y - hit.point.y);
+                    _gravity = 0.0f;
+                }
+            }
+            else 
+            {
+                _gravity = 0.0f;
+                _grounding = 0.0f;
+            }
+
+            //_falling = !groundFlag;
+            _onFalling?.Invoke(!_onGround);
+
             int count = Physics.OverlapCapsuleNonAlloc
             (
                 transform.position + Vector3.up * _collider.height/2.0f,
                 transform.position - Vector3.up * _collider.height/2.0f,
                 _collider.radius + EPSILON, _neighbours
-
             );
-
-            // Desired Movement
-            float impulse = _inputMagnitude * _attributes.MovementSpeed * Time.fixedDeltaTime;
-            Vector3 advance = _inputDirection * impulse + Vector3.down * _gravity;
 
             // Depenetration
             Vector3 resolve = Vector3.zero;
-
-            // Ground checking
-            bool groundFlag = false;
 
             for(int i = 0; i < count; i++) 
             {
@@ -91,37 +128,19 @@ namespace Game.Controller
                 );
 
                 if(!overlapped) continue;
-
-                RaycastHit hit;
-                if(Physics.Raycast(transform.position + Vector3.down * EPSILON, -direction, out hit, 10.0f))
-                {
-                    float dot = Vector3.Dot(hit.normal, Vector3.up);
-                    if(dot >= MIN_DOT_SURFACE) 
-                    {
-                        groundFlag = true;
-                    }   
-                }
-
                 resolve += direction * distance;
-            }
-
-            _falling = !groundFlag;
-            _onFalling?.Invoke(_falling);
-
-            // Check gravity
-            if(_useGravity) 
-            {
-                if(_falling) 
-                {
-                    _gravity += GRAVITY * Time.fixedDeltaTime * Time.fixedDeltaTime;
-                } else 
-                {
-                    _gravity = 0.0f;
-                }
             }
 
             // Advance is the desired movement, and resolve is a vector stopping the advance
             transform.position += advance + resolve;
+        }
+
+        void Rotation() 
+        {
+            float speed = _turnDirection.x * _turnMagnitude * _attributes.TurnSpeed * Time.deltaTime;
+            Vector3 rot = new Vector3(0.0f, speed, 0.0f);
+            
+            transform.Rotate(rot);
         }
 
         public void AddFallingListener(Action<bool> eventHandler) 
@@ -148,8 +167,14 @@ namespace Game.Controller
 
         public void SetMovement(Vector3 dir, float mag)
         {
-            _inputDirection = dir;
-            _inputMagnitude = mag;
+            _moveDirection = dir;
+            _moveMagnitude = mag;
+        }
+
+        public void SetRotation(Vector3 dir, float mag) 
+        {
+            _turnDirection = dir;
+            _turnMagnitude = mag;
         }
 
         #endregion
