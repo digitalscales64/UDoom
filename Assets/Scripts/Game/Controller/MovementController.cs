@@ -10,13 +10,14 @@ namespace Game.Controller
     {
         private const int MAX_NEIGHBOURS = 16;
         private const float GRAVITY = 9.8f;
-        private const float EPSILON = 0.3f;
+        private const float EPSILON = 0.001f;
+        private const int MAX_ITERATTIONS = 18;
 
         #region Serialized Fields
 
         [SerializeField] private MovementAttributes _attributes;
         [SerializeField] private CapsuleCollider _collider;
-        [SerializeField] private float _groundSphereRadius = 0.2f;
+        [SerializeField] private LayerMask _layerMask;
         [SerializeField] private bool _useGravity;
 
         #endregion
@@ -36,9 +37,7 @@ namespace Game.Controller
         private Collider[] _neighbours;
 
         // Falling
-        private bool _onGround;
         private float _gravity;
-        private float _grounding;
 
         void Start() 
         {
@@ -64,78 +63,85 @@ namespace Game.Controller
             Movement();
         }
 
-        void Movement() 
+        protected virtual void Movement() 
         {
             // Desired Movement
             float impulse = _moveMagnitude * _attributes.MovementSpeed * Time.fixedDeltaTime;
-            Vector3 advance = _moveDirection * impulse + Vector3.down * _gravity;
+            Vector3 advance = _moveDirection * impulse;
 
-            // Check gravity
-            if(_useGravity) 
-            {
-                // Check grounding
-                RaycastHit hit;
-                Ray ray = new Ray(transform.position + advance, Vector3.down); 
-                _onGround = Physics.SphereCast(ray, _groundSphereRadius, out hit, _collider.height/2.0f + EPSILON);
-
-                if(!_onGround) 
-                {
-                    _grounding = 0.0f;
-                    _gravity += GRAVITY * Time.fixedDeltaTime * Time.fixedDeltaTime;
-                } else 
-                {
-                    _grounding = Mathf.Abs(transform.position.y - hit.point.y);
-                    _gravity = 0.0f;
-                }
-            }
-            else 
-            {
-                _gravity = 0.0f;
-                _grounding = 0.0f;
-            }
-
-            //_falling = !groundFlag;
-            _onFalling?.Invoke(!_onGround);
+            // Gravity
+            Vector3 gravity = Vector3.down * _gravity;
 
             int count = Physics.OverlapCapsuleNonAlloc
             (
                 transform.position + Vector3.up * _collider.height/2.0f,
                 transform.position - Vector3.up * _collider.height/2.0f,
-                _collider.radius + EPSILON, _neighbours
+                _collider.radius + 2 * EPSILON, _neighbours,
+                _layerMask, QueryTriggerInteraction.Ignore 
             );
 
-            // Depenetration
-            Vector3 resolve = Vector3.zero;
+            bool isGrounded = false;
+            Vector3 movement = transform.position + advance + gravity;
 
-            for(int i = 0; i < count; i++) 
+            for(int iteration = 0; iteration < MAX_ITERATTIONS; iteration++) 
             {
-                Collider other = _neighbours[i];
-                if(_collider == other) continue;
+                // Depenetration
+                Vector3 resolve = Vector3.zero;
 
-                Vector3 otherPosition = other.gameObject.transform.position;
-                Quaternion otherRotation = other.gameObject.transform.rotation; 
+                for(int i = 0; i < count; i++) 
+                {
+                    Collider other = _neighbours[i];
+                    if(_collider == other) continue;
 
-                _onCollision?.Invoke(other.gameObject);
+                    Vector3 otherPosition = other.gameObject.transform.position;
+                    Quaternion otherRotation = other.gameObject.transform.rotation; 
 
-                Vector3 direction;
-                float distance;
+                    _onCollision?.Invoke(other.gameObject);
 
-                bool overlapped = Physics.ComputePenetration
-                (
-                _collider, transform.position + advance, transform.rotation,
-                other, otherPosition, otherRotation,
-                out direction, out distance
-                );
+                    Vector3 direction;
+                    float distance;
 
-                if(!overlapped) continue;
-                resolve += direction * distance;
+                    bool overlapped = Physics.ComputePenetration
+                    (
+                    _collider, movement, transform.rotation,
+                    other, otherPosition, otherRotation,
+                    out direction, out distance
+                    );
+
+                    if(!overlapped) continue;
+
+                    resolve += direction * (distance - EPSILON);
+
+                    float dot = Vector3.Dot(Vector3.up, direction);
+                    if(dot < 0.5f) continue;
+
+                    RaycastHit hit;
+                    if(Physics.Raycast(movement, -direction, out hit)) 
+                    {
+                        isGrounded = true;
+                    }
+                }
+
+                movement += resolve;
+            }
+
+            // Grounding
+            _onFalling?.Invoke(!isGrounded);
+
+            if(!isGrounded) 
+            {
+                _gravity += GRAVITY * Time.fixedDeltaTime * Time.fixedDeltaTime;
+            }
+            else 
+            {
+                _gravity = 0.0f;
             }
 
             // Advance is the desired movement, and resolve is a vector stopping the advance
-            transform.position += advance + resolve;
+            transform.position = movement;
         }
 
-        void Rotation() 
+        protected virtual void Rotation() 
         {
             float speed = _turnDirection.x * _turnMagnitude * _attributes.TurnSpeed * Time.deltaTime;
             Vector3 rot = new Vector3(0.0f, speed, 0.0f);

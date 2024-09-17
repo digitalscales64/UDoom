@@ -86,6 +86,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _attributes: {fileID: 11400000, guid: df0928d1a5210d845a51df12a06cea86, type: 2}
   _collider: {fileID: 8626035593453345782}
+  _layerMask:
+    serializedVersion: 2
+    m_Bits: 8
   _groundSphereRadius: 0.2
   _useGravity: 0
 --- !u!114 &3920730803770781968
