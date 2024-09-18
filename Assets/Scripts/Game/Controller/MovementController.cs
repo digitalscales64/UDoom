@@ -5,7 +5,6 @@ using UnityEngine;
 
 namespace Game.Controller 
 {
-    [RequireComponent(typeof(CapsuleCollider), typeof(IMovementInput))]
     public class MovementController : MonoBehaviour, Core.IMovement
     {
         private const int MAX_NEIGHBOURS = 16;
