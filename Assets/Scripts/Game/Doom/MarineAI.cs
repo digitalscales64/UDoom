@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Game.Doom 
 {
-    public class MarineAI : Machine, IMovementInput, IRotationInput
+    public class MarineAI : Machine
     {
         #region Machine Implementation
 

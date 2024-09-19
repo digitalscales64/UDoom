@@ -1,11 +1,11 @@
 using System;
 using UnityEngine;
+using UnityEngine.Events;
 
 namespace Game.Input.Core 
 {
     public interface IMovementInput
     {
-        void AddMovementListener(Action<Vector3, float> eventHandler);
-        void RemoveMovementListener(Action<Vector3, float> eventHandler);
+        UnityEvent<Vector3, float> OnMovementInput { get; }
     }
 }
