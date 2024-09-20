@@ -8,13 +8,15 @@ namespace Game.Controller
     public class MovementController : MonoBehaviour
     {
         private const float GRAVITY = 9.8f;
-        private const float GROUND_TOLERANCE = 0.1f;
+        private const float GROUND_TOLERANCE = 0.2f;
+        private const float JUMP_TOLERANCE = 0.1f;
 
         #region Serialized Fields
 
         [SerializeField] private MovementAttributes _attributes;
         [SerializeField] private CharacterController _controller;
         [SerializeField] private bool _useGravity;
+        [SerializeField] private float vertical = 0.5f;
 
         #endregion
 
@@ -29,6 +31,9 @@ namespace Game.Controller
         // gravity
         private float _gravity;
         private bool _isFalling;
+
+        // jumping
+        private float _jump;
 
         void Start() 
         {
@@ -55,27 +60,26 @@ namespace Game.Controller
             transform.Rotate(rot);
 
             // Desired Movement
-            Vector3 advance = fix * (_moveMagnitude * _attributes.MovementSpeed * Time.fixedDeltaTime) + Vector3.down * _gravity;
+            Vector3 advance = fix * (_moveMagnitude * _attributes.MovementSpeed * Time.fixedDeltaTime) + Vector3.up * _jump + Vector3.down * _gravity;
 
             if(_controller.isGrounded) 
             {
-                _isFalling = false;
+                float fall = _jump - _gravity; 
+                if(fall > 0.0f + GROUND_TOLERANCE) 
+                {
+                    _isFalling = true;
+                }
+                else 
+                {
+                    _isFalling = false;
+                }
             }
             else 
             {
                 RaycastHit hit;
-                if(Physics.SphereCast(transform.position, 0.2f, Vector3.down, out hit)) 
+                if(Physics.SphereCast(transform.position, 0.2f, Vector3.down, out hit, _controller.height/2.0f + GROUND_TOLERANCE)) 
                 {
-                    float difference = transform.position.y - hit.point.y;
-                    bool flag = difference < _controller.height/2.0f + GROUND_TOLERANCE;
-
-                    if(!flag) 
-                    {
-                        Vector3 grounding = Vector3.down * difference;
-                        advance += grounding;
-                    }
-
-                    _isFalling = flag;
+                    _isFalling = false;
                 }
 
                 _isFalling = true;
@@ -84,9 +88,10 @@ namespace Game.Controller
             if(_isFalling) 
             {
                 _gravity += GRAVITY * Time.fixedDeltaTime * Time.fixedDeltaTime;
-            }   
+            }
             else 
             {
+                _jump = 0.0f;
                 _gravity = 0.0f;
             }
 
@@ -94,6 +99,14 @@ namespace Game.Controller
         }
 
         #region Callable Methods
+
+        public void TriggerJump(bool value) 
+        {
+            if(value && !_isFalling) 
+            {
+                _jump += vertical;
+            }
+        }
 
         public void SetMovement(Vector2 dir, float mag)
         {

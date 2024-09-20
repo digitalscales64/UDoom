@@ -17,6 +17,10 @@ namespace Game.Setting
         [SerializeField] private float _turningInputSmoothing;
         public float TurningInputSmoothing => _turningInputSmoothing;
 
+        [Header("Axis smoothing factor")]
+        [SerializeField] private float _axisInputSmoothing;
+        public float AxisInputSmoothing => _axisInputSmoothing;
+
         [Header("Toggleable Actions")]
         
         [Tooltip("Hold or toggle to duck")]
