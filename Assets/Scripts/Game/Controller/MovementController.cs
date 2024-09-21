@@ -1,15 +1,14 @@
-using System;
 using Game.Attribute;
-using Game.Input.Core;
 using UnityEngine;
 
 namespace Game.Controller 
 {
     public class MovementController : MonoBehaviour
     {
-        private const float GRAVITY = 9.8f;
-        private const float GROUND_TOLERANCE = 0.2f;
-        private const float JUMP_TOLERANCE = 0.1f;
+        private const float GRAVITY = -9.8f;
+        private const float GROUND_TOLERANCE = 0.1f;
+        private const float VERTICAL_TOLERANCE = 0.1f;
+        private const float COYOTE_TIME = 0.1f;
 
         #region Serialized Fields
 
@@ -20,6 +19,9 @@ namespace Game.Controller
 
         #endregion
 
+        // Coyote time
+        private float _timeSinceLeftGround;
+
         // Desired Movement
         private Vector2 _moveDirection;
         private float _moveMagnitude;
@@ -29,11 +31,8 @@ namespace Game.Controller
         private float _turnMagnitude;
 
         // gravity
-        private float _gravity;
+        private float _vertical;
         private bool _isFalling;
-
-        // jumping
-        private float _jump;
 
         void Start() 
         {
@@ -60,39 +59,47 @@ namespace Game.Controller
             transform.Rotate(rot);
 
             // Desired Movement
-            Vector3 advance = fix * (_moveMagnitude * _attributes.MovementSpeed * Time.fixedDeltaTime) + Vector3.up * _jump + Vector3.down * _gravity;
+            Vector3 advance = fix * (_moveMagnitude * _attributes.MovementSpeed * Time.fixedDeltaTime) + Vector3.up * _vertical;
 
-            if(_controller.isGrounded) 
+            Debug.Log(_controller.isGrounded);
+
+            //
+            RaycastHit hit; 
+            if(Physics.Raycast(transform.position + advance, Vector3.down, out hit)) 
             {
-                float fall = _jump - _gravity; 
-                if(fall > 0.0f + GROUND_TOLERANCE) 
+                float distance = transform.position.y - hit.point.y;
+                if(distance <= _controller.height + GROUND_TOLERANCE) 
                 {
-                    _isFalling = true;
+                    if(_vertical <= VERTICAL_TOLERANCE) 
+                    {
+                        _isFalling = false;
+                        advance += Vector3.down * (distance - _controller.height/2.0f);
+                    }
+                    else 
+                    {
+                        _isFalling = true;
+                    }
                 }
                 else 
                 {
-                    _isFalling = false;
+                    _isFalling = true;
                 }
             }
             else 
             {
-                RaycastHit hit;
-                if(Physics.SphereCast(transform.position, 0.2f, Vector3.down, out hit, _controller.height/2.0f + GROUND_TOLERANCE)) 
-                {
-                    _isFalling = false;
-                }
-
                 _isFalling = true;
             }
 
+            // falling
             if(_isFalling) 
             {
-                _gravity += GRAVITY * Time.fixedDeltaTime * Time.fixedDeltaTime;
+                _timeSinceLeftGround += Time.fixedDeltaTime;
+                _vertical += GRAVITY * Time.fixedDeltaTime * Time.fixedDeltaTime;
             }
             else 
             {
-                _jump = 0.0f;
-                _gravity = 0.0f;
+                _timeSinceLeftGround = 0.0f;
+                _vertical = 0.0f;
             }
 
             _controller.Move(advance);
@@ -102,9 +109,9 @@ namespace Game.Controller
 
         public void TriggerJump(bool value) 
         {
-            if(value && !_isFalling) 
+            if(value && (!_isFalling || _timeSinceLeftGround <= COYOTE_TIME)) 
             {
-                _jump += vertical;
+                _vertical += vertical;
             }
         }
 
